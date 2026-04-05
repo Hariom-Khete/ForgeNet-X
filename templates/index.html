@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ForgeNet-X — AI Handwriting & Signature Analysis</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<!-- ══════════════════════════════ NAVBAR ══════════════════════════════ -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <span class="nav-icon">⬡</span>
+    <span class="nav-title">ForgeNet<span class="accent">-X</span></span>
+  </div>
+  <div class="nav-links">
+    <a href="#handwriting-section">Handwriting</a>
+    <a href="#signature-section">Signature</a>
+    <a href="#report-section">Report</a>
+  </div>
+  <div class="nav-badge">AI Forensics v1.0</div>
+</nav>
+
+<!-- ════════════════════════════════ HERO ══════════════════════════════ -->
+<header class="hero">
+  <div class="hero-content">
+    <div class="hero-tag">Final Year AI/ML Project</div>
+    <h1>ForgeNet<span class="accent">-X</span></h1>
+    <p class="hero-sub">
+      AI-powered handwriting imitation &amp; signature forgery analysis system.<br/>
+      Upload samples → extract style → generate text → detect forgeries.
+    </p>
+    <div class="hero-chips">
+      <span class="chip">OpenCV</span>
+      <span class="chip">SSIM</span>
+      <span class="chip">Flask</span>
+      <span class="chip">NumPy</span>
+      <span class="chip">ReportLab</span>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <div class="pulse-ring"></div>
+    <div class="hex-icon">⬡</div>
+  </div>
+</header>
+
+<!-- ══════════════════════════ STEP INDICATOR ═══════════════════════════ -->
+<section class="steps-bar">
+  <div class="step active" id="step-1">
+    <div class="step-num">01</div>
+    <div class="step-label">Upload Handwriting</div>
+  </div>
+  <div class="step-arrow">→</div>
+  <div class="step" id="step-2">
+    <div class="step-num">02</div>
+    <div class="step-label">Generate Text</div>
+  </div>
+  <div class="step-arrow">→</div>
+  <div class="step" id="step-3">
+    <div class="step-num">03</div>
+    <div class="step-label">Upload Signatures</div>
+  </div>
+  <div class="step-arrow">→</div>
+  <div class="step" id="step-4">
+    <div class="step-num">04</div>
+    <div class="step-label">Analyze &amp; Report</div>
+  </div>
+</section>
+
+<!-- ════════════════════ MODULE 1 — HANDWRITING ═════════════════════════ -->
+<main class="container">
+  <section class="card" id="handwriting-section">
+    <div class="card-header">
+      <span class="card-icon">✍️</span>
+      <div>
+        <h2>Handwriting Analysis</h2>
+        <p class="card-desc">Upload a handwriting sample to extract writing style and generate imitation text.</p>
+      </div>
+    </div>
+
+    <!-- Upload zone -->
+    <div class="upload-zone" id="hw-drop-zone">
+      <input type="file" id="hw-file" accept="image/*" hidden/>
+      <div class="upload-icon">📄</div>
+      <p>Drag &amp; drop handwriting image here, or <span class="link" onclick="document.getElementById('hw-file').click()">browse</span></p>
+      <p class="upload-hint">PNG / JPG / BMP — max 16 MB</p>
+    </div>
+    <div id="hw-preview-wrap" class="preview-wrap hidden">
+      <img id="hw-preview" class="preview-img" alt="Handwriting preview"/>
+      <button class="btn btn-ghost" onclick="clearHw()">✕ Clear</button>
+    </div>
+    <button class="btn btn-primary" id="btn-upload-hw" onclick="uploadHandwriting()">
+      🔍 Analyse Handwriting
+    </button>
+    <div id="hw-result" class="result-box hidden"></div>
+
+    <!-- Generate from text -->
+    <div class="sub-card" id="gen-section">
+      <h3>Generate Handwriting from Text</h3>
+      <textarea id="gen-text" placeholder="Type the text you want rendered in this handwriting style…" rows="4"></textarea>
+      <button class="btn btn-secondary" onclick="generateText()">
+        ✨ Generate Handwriting
+      </button>
+      <div id="gen-result" class="result-box hidden"></div>
+      <div id="gen-preview-wrap" class="preview-wrap hidden">
+        <img id="gen-preview" class="preview-img" alt="Generated handwriting"/>
+        <a id="gen-download" class="btn btn-ghost" download>⬇ Download Image</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════ MODULE 2 — SIGNATURE ═══════════════════════════ -->
+  <section class="card" id="signature-section">
+    <div class="card-header">
+      <span class="card-icon">🔏</span>
+      <div>
+        <h2>Signature Forgery Analysis</h2>
+        <p class="card-desc">Upload an original and a test signature to get a similarity score and risk assessment.</p>
+      </div>
+    </div>
+
+    <div class="sig-grid">
+      <!-- Original signature -->
+      <div class="sig-col">
+        <label class="sig-label">Original Signature</label>
+        <div class="upload-zone small" id="orig-drop-zone">
+          <input type="file" id="orig-sig-file" accept="image/*" hidden/>
+          <div class="upload-icon">📝</div>
+          <p><span class="link" onclick="document.getElementById('orig-sig-file').click()">Browse</span></p>
+        </div>
+        <div id="orig-preview-wrap" class="preview-wrap hidden">
+          <img id="orig-preview" class="preview-img" alt="Original signature"/>
+        </div>
+      </div>
+      <!-- Test signature -->
+      <div class="sig-col">
+        <label class="sig-label">Test Signature (Under Scrutiny)</label>
+        <div class="upload-zone small" id="test-drop-zone">
+          <input type="file" id="test-sig-file" accept="image/*" hidden/>
+          <div class="upload-icon">🧪</div>
+          <p><span class="link" onclick="document.getElementById('test-sig-file').click()">Browse</span></p>
+        </div>
+        <div id="test-preview-wrap" class="preview-wrap hidden">
+          <img id="test-preview" class="preview-img" alt="Test signature"/>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="btn-upload-sigs" onclick="uploadSignatures()">
+      📤 Upload Signatures
+    </button>
+    <div id="sig-upload-result" class="result-box hidden"></div>
+
+    <button class="btn btn-danger" id="btn-analyze" onclick="analyzeSignatures()" disabled>
+      🔬 Run Forgery Analysis
+    </button>
+
+    <!-- Score dashboard -->
+    <div id="analysis-dashboard" class="dashboard hidden">
+      <div class="score-card">
+        <div class="score-ring-wrap">
+          <svg viewBox="0 0 120 120" class="score-ring">
+            <circle cx="60" cy="60" r="50" class="ring-bg"/>
+            <circle cx="60" cy="60" r="50" class="ring-fill" id="ring-fill"/>
+          </svg>
+          <div class="score-text" id="score-text">0%</div>
+        </div>
+        <div class="score-meta">
+          <div class="score-label">Similarity Score</div>
+          <div class="risk-badge" id="risk-badge">—</div>
+        </div>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-item">
+          <div class="metric-label">SSIM Score</div>
+          <div class="metric-bar-wrap">
+            <div class="metric-bar" id="bar-ssim"></div>
+          </div>
+          <div class="metric-val" id="val-ssim">—</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">Hu Moments</div>
+          <div class="metric-bar-wrap">
+            <div class="metric-bar" id="bar-hu"></div>
+          </div>
+          <div class="metric-val" id="val-hu">—</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">Histogram</div>
+          <div class="metric-bar-wrap">
+            <div class="metric-bar" id="bar-hist"></div>
+          </div>
+          <div class="metric-val" id="val-hist">—</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">Pixel Distance</div>
+          <div class="metric-bar-wrap">
+            <div class="metric-bar" id="bar-pixel"></div>
+          </div>
+          <div class="metric-val" id="val-pixel">—</div>
+        </div>
+      </div>
+
+      <div class="verdict-box" id="verdict-box"></div>
+      <div id="features-table-wrap"></div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════ MODULE 3 — REPORT ═════════════════════════════ -->
+  <section class="card" id="report-section">
+    <div class="card-header">
+      <span class="card-icon">📑</span>
+      <div>
+        <h2>Generate PDF Report</h2>
+        <p class="card-desc">Bundle all results into a downloadable, professional analysis report.</p>
+      </div>
+    </div>
+    <div class="report-info">
+      The report includes: original &amp; generated handwriting, signature comparison,
+      metric breakdown, risk classification, and a written verdict.
+    </div>
+    <button class="btn btn-accent" onclick="downloadReport()">
+      📥 Download PDF Report
+    </button>
+    <div id="report-result" class="result-box hidden"></div>
+  </section>
+</main>
+
+<!-- ════════════════════════════ FOOTER ════════════════════════════════ -->
+<footer class="footer">
+  <p>ForgeNet-X &nbsp;|&nbsp; AI/ML Final Year Project &nbsp;|&nbsp;
+     Built with Flask · OpenCV · scikit-image · ReportLab</p>
+</footer>
+
+<!-- ══════════════════════ LOADING OVERLAY ══════════════════════════════ -->
+<div class="overlay hidden" id="overlay">
+  <div class="spinner"></div>
+  <p id="overlay-msg">Processing…</p>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

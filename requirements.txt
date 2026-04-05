@@ -1,0 +1,23 @@
+# ForgeNet-X — Python Dependencies (Windows)
+# Install with:  pip install -r requirements.txt
+#
+# NOTE: Use opencv-python (NOT opencv-python-headless) on Windows
+
+# ── Web Framework ────────────────────────────────────
+Flask==3.0.3
+Werkzeug==3.0.3
+
+# ── Image Processing ─────────────────────────────────
+opencv-python==4.10.0.84
+numpy==1.26.4
+Pillow==10.4.0
+
+# ── Machine Learning / Metrics ───────────────────────
+scikit-image==0.24.0
+scipy==1.13.1
+
+# ── PDF Generation ───────────────────────────────────
+reportlab==4.2.2
+
+# ── Utilities ────────────────────────────────────────
+python-dotenv==1.0.1

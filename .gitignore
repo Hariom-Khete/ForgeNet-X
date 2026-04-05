@@ -1,0 +1,23 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code settings
+.vscode/
+
+# Environment variables
+.env
+
+# Output images (generated results)
+outputs/
+
+# Debug images (your segmentation visuals)
+debug_*.png
+
+# OS files
+.DS_Store
+Thumbs.db
