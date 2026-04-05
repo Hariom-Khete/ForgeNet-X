@@ -197,25 +197,33 @@ def _section_handwriting(hw_path, gen_path, S) -> list:
 
 # ── § 2 ───────────────────────────────────────────────────────────────────────
 PIPELINE_DESCS = {
-    "original" : ("BGR colour image loaded directly from disk.",
-                  "No processing applied.  Serves as the ground-truth reference."),
-    "gray"     : ("Converted to single-channel luminance using cv2.COLOR_BGR2GRAY.",
-                  "Eliminates colour variation so thresholding operates on intensity only."),
-    "denoised" : ("Gaussian blur applied (kernel 3×3) to suppress high-frequency noise.",
-                  "Smoothing prevents isolated pixels from becoming false ink detections."),
-    "binary"   : ("Otsu's adaptive threshold + BINARY_INV:  ink = white (255), "
-                  "background = black (0).  Morphological opening removes remaining specks.",
-                  "This is the primary working image for all downstream stages."),
-    "resized"  : ("Binary image scaled to 1024 px wide (aspect-preserving).",
-                  "Standardises input size for consistent contour detection."),
+    "original"  : ("BGR colour image loaded directly from disk.",
+                   "No processing applied — serves as the ground-truth reference."),
+    "gray"      : ("Converted to single-channel luminance using cv2.COLOR_BGR2GRAY.",
+                   "Eliminates colour variation so binarisation operates on intensity only."),
+    "bilateral" : ("Bilateral filter (d=9, σ_colour=75, σ_space=75) — edge-preserving denoise.",
+                   "Smooths paper grain and texture while keeping ink-stroke edges sharp."),
+    "clahe"     : ("CLAHE (Contrast-Limited Adaptive Histogram Equalisation) on bilateral image.",
+                   "Normalises local contrast tile-by-tile — neutralises shadows and highlights."),
+    "adaptive"  : ("Adaptive Gaussian Threshold — primary binariser (blockSize=31, C=10).",
+                   "Each pixel gets its own local threshold — immune to global lighting variation."),
+    "otsu_mask" : ("Otsu threshold applied to the CLAHE image — used as a secondary vote.",
+                   "AND-blended with adaptive: only pixels both methods call ink are kept."),
+    "binary"    : ("AND(adaptive, otsu) → morphOpen → morphClose → blob area filter (≥20px²).",
+                   "Final cleaned binary: false-positive paper noise and tiny specks removed."),
+    "resized"   : ("Aspect-preserving resize to 1024px wide + re-binarise after interpolation.",
+                   "Standardised working image used for all character segmentation."),
 }
 
 STAGE_COLORS = {
-    "original" : C_TEAL,
-    "gray"     : C_SUCCESS,
-    "denoised" : C_WARNING,
-    "binary"   : C_DANGER,
-    "resized"  : C_PURPLE,
+    "original"  : C_TEAL,
+    "gray"      : C_SUCCESS,
+    "bilateral" : C_WARNING,
+    "clahe"     : colors.HexColor("#E67E22"),
+    "adaptive"  : C_DANGER,
+    "otsu_mask" : C_PURPLE,
+    "binary"    : colors.HexColor("#1ABC9C"),
+    "resized"   : colors.HexColor("#EC407A"),
 }
 
 def _section_preprocessing(pipeline_paths: dict, S) -> list:
@@ -231,7 +239,7 @@ def _section_preprocessing(pipeline_paths: dict, S) -> list:
     e.append(Spacer(1, 0.4*cm))
 
     # Ordered display
-    stage_order = ["original", "gray", "denoised", "binary", "resized"]
+    stage_order = ["original", "gray", "bilateral", "clahe", "adaptive", "otsu_mask", "binary", "resized"]
 
     for i, key in enumerate(stage_order):
         path = pipeline_paths.get(key)
