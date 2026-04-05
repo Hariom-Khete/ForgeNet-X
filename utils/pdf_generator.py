@@ -71,10 +71,11 @@ def generate_report(
     test_sig       : "str | None",
     analysis       : dict,
     output_path    : str,
-    # Visual confirmation (new)
+    # Visual confirmation
     pipeline_paths : dict  = None,   # {stage_key: png_path}
     seg_overview   : "str | None" = None,
     atlas_sheet    : "str | None" = None,
+    line_debug     : "str | None" = None,
 ) -> str:
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -100,8 +101,8 @@ def generate_report(
         story += _section_preprocessing(pipeline_paths, S)
 
     # § 3  Segmentation
-    if seg_overview or atlas_sheet:
-        story += _section_segmentation(seg_overview, atlas_sheet, S)
+    if seg_overview or atlas_sheet or line_debug:
+        story += _section_segmentation(seg_overview, atlas_sheet, line_debug, S)
 
     # § 4  Signature analysis
     if orig_sig or test_sig or analysis:
@@ -276,7 +277,7 @@ def _section_preprocessing(pipeline_paths: dict, S) -> list:
 
 
 # ── § 3 ───────────────────────────────────────────────────────────────────────
-def _section_segmentation(seg_overview, atlas_sheet, S) -> list:
+def _section_segmentation(seg_overview, atlas_sheet, line_debug, S) -> list:
     e = []
     e.append(PageBreak())
     e += _section_title("3", "Character Segmentation", C_ACCENT, S)
@@ -316,10 +317,27 @@ def _section_segmentation(seg_overview, atlas_sheet, S) -> list:
     else:
         e.append(Paragraph("[Atlas sheet not available]", S["body"]))
 
+    e.append(Spacer(1, 0.4*cm))
+
+    # 3c — Line detection debug image
+    e.append(_sub_header("3c — Line Detection  (Horizontal Projection Profile)", C_PURPLE, S))
+    e.append(Paragraph(
+        "The graph shows the horizontal projection profile used to detect text-line "
+        "boundaries on the blank page.  Green bars = ink rows above threshold.  "
+        "Yellow lines = detected line breaks used to group contours into lines "
+        "before left-to-right sorting is applied within each line.  "
+        "This replaces the old arbitrary y//20 row-bucket hack.",
+        S["body"]))
+    e.append(Spacer(1, 0.3*cm))
+    if line_debug and os.path.exists(line_debug):
+        e.append(Image(line_debug, width=5*cm, height=9*cm, kind="proportional"))
+    else:
+        e.append(Paragraph("[Line debug image not available]", S["body"]))
+
     e.append(Spacer(1, 0.5*cm))
 
-    # 3c — Label assignment explanation table
-    e.append(_sub_header("3c — Charset Label Assignment Map", C_PURPLE, S))
+    # 3d — Label assignment explanation table
+    e.append(_sub_header("3d — Charset Label Assignment Map", C_PURPLE, S))
     e.append(Paragraph(
         "The table below shows exactly which label is assigned to each crop index. "
         "Index 0 → 'a', index 1 → 'b', … index 25 → 'z', index 26 → 'A', etc.  "

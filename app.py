@@ -19,7 +19,8 @@ from werkzeug.utils import secure_filename
 from utils.preprocessing      import preprocess_image, save_pipeline_visuals
 from utils.segmentation       import (segment_characters,
                                       save_segmentation_overview,
-                                      save_character_atlas_sheet)
+                                      save_character_atlas_sheet,
+                                      save_line_debug_image)
 from utils.handwriting        import generate_handwriting
 from utils.signature_analysis import analyze_signatures
 from utils.pdf_generator      import generate_report
@@ -93,21 +94,34 @@ def upload_handwriting():
                                     base_name=fname)
 
     # ── Segmentation overview (bounding-box annotation image) ─────────────────
+    # Derive char_dir here so all visual functions share the same path
+    stem     = os.path.splitext(fname)[0]
+    char_dir = str(OUTPUT_GEN / f"chars_{stem}")
+
     seg_overview = save_segmentation_overview(processed,
                                               char_paths,
                                               output_dir=str(OUTPUT_VISUALS),
-                                              base_name=fname)
+                                              base_name=fname,
+                                              char_dir=char_dir)
 
     # ── Character atlas sheet (tiled crop grid) ───────────────────────────────
     atlas_sheet  = save_character_atlas_sheet(char_paths,
                                               output_dir=str(OUTPUT_VISUALS),
-                                              base_name=fname)
+                                              base_name=fname,
+                                              char_dir=char_dir)
 
-    # Store all visual paths keyed by upload filename
+    # ── Line detection debug image ────────────────────────────────────────────
+    line_debug   = save_line_debug_image(processed,
+                                         output_dir=str(OUTPUT_VISUALS),
+                                         base_name=fname)
+
+    # Store all visual paths + char_dir keyed by upload filename
     _visual_store[fname] = {
-        "pipeline"    : pp_paths,           # dict {stage: path}
-        "seg_overview": seg_overview,        # str
-        "atlas_sheet" : atlas_sheet,         # str
+        "pipeline"    : pp_paths,
+        "seg_overview": seg_overview,
+        "atlas_sheet" : atlas_sheet,
+        "line_debug"  : line_debug,
+        "char_dir"    : char_dir,
     }
 
     return jsonify({
@@ -135,7 +149,10 @@ def generate_text():
     out_path = OUTPUT_GEN / out_name
 
     processed = preprocess_image(str(hw_path))
-    generate_handwriting(processed, input_text, str(out_path))
+    # Retrieve the char_dir with the correct manifest from the upload step
+    char_dir  = _visual_store.get(hw_filename, {}).get("char_dir", None)
+    generate_handwriting(processed, input_text, str(out_path),
+                         char_dir=char_dir)
 
     return jsonify({
         "message"      : "Handwriting generated",
@@ -212,6 +229,7 @@ def download_report():
         pipeline_paths = visuals.get("pipeline",     {}),
         seg_overview   = visuals.get("seg_overview", None),
         atlas_sheet    = visuals.get("atlas_sheet",  None),
+        line_debug     = visuals.get("line_debug",   None),
     )
 
     return send_file(str(report_path),
