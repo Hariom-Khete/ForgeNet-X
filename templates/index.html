@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ForgeNet-X — AI Handwriting & Signature Analysis</title>
+  <title>ForgeNet-X — Forensic Handwriting & Signature Authenticity System</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
@@ -17,11 +17,12 @@
     <span class="nav-title">ForgeNet<span class="accent">-X</span></span>
   </div>
   <div class="nav-links">
-    <a href="#handwriting-section">Handwriting</a>
-    <a href="#signature-section">Signature</a>
+    <a href="#handwriting-section">Authenticate</a>
+    <a href="#signature-section">Signature Analysis</a>
+    <a href="#gen-section">Stress-Test</a>
     <a href="#report-section">Report</a>
   </div>
-  <div class="nav-badge">AI Forensics v1.0</div>
+  <div class="nav-badge">Forensic Auth v1.0</div>
 </nav>
 
 <!-- ════════════════════════════════ HERO ══════════════════════════════ -->
@@ -30,8 +31,8 @@
     <div class="hero-tag">Final Year AI/ML Project</div>
     <h1>ForgeNet<span class="accent">-X</span></h1>
     <p class="hero-sub">
-      AI-powered handwriting imitation &amp; signature forgery analysis system.<br/>
-      Upload samples → extract style → generate text → detect forgeries.
+      Forensic handwriting &amp; signature authenticity system.<br/>
+      Authenticate samples → detect forgeries → stress-test with synthetic data.
     </p>
     <div class="hero-chips">
       <span class="chip">OpenCV</span>
@@ -39,6 +40,7 @@
       <span class="chip">Flask</span>
       <span class="chip">NumPy</span>
       <span class="chip">ReportLab</span>
+      <span class="chip">EXIF Analysis</span>
     </div>
   </div>
   <div class="hero-visual">
@@ -51,33 +53,33 @@
 <section class="steps-bar">
   <div class="step active" id="step-1">
     <div class="step-num">01</div>
-    <div class="step-label">Upload Handwriting</div>
+    <div class="step-label">Authenticate Handwriting</div>
   </div>
   <div class="step-arrow">→</div>
   <div class="step" id="step-2">
     <div class="step-num">02</div>
-    <div class="step-label">Generate Text</div>
+    <div class="step-label">Signature Forensics</div>
   </div>
   <div class="step-arrow">→</div>
   <div class="step" id="step-3">
     <div class="step-num">03</div>
-    <div class="step-label">Upload Signatures</div>
+    <div class="step-label">Stress-Test Generator</div>
   </div>
   <div class="step-arrow">→</div>
   <div class="step" id="step-4">
     <div class="step-num">04</div>
-    <div class="step-label">Analyze &amp; Report</div>
+    <div class="step-label">Forensic Report</div>
   </div>
 </section>
 
-<!-- ════════════════════ MODULE 1 — HANDWRITING ═════════════════════════ -->
+<!-- ════════════════════ MODULE A — FORENSIC ANALYSIS ═══════════════════ -->
 <main class="container">
   <section class="card" id="handwriting-section">
     <div class="card-header">
-      <span class="card-icon">✍️</span>
+      <span class="card-icon">🔬</span>
       <div>
-        <h2>Handwriting Analysis</h2>
-        <p class="card-desc">Upload a handwriting sample to extract writing style and generate imitation text.</p>
+        <h2>Handwriting Authenticity Analysis</h2>
+        <p class="card-desc">Upload a handwriting sample for forensic preprocessing, character extraction, and provenance analysis.</p>
       </div>
     </div>
 
@@ -93,39 +95,65 @@
       <button class="btn btn-ghost" onclick="clearHw()">✕ Clear</button>
     </div>
     <button class="btn btn-primary" id="btn-upload-hw" onclick="uploadHandwriting()">
-      🔍 Analyse Handwriting
+      🔍 Authenticate &amp; Analyse
     </button>
     <div id="hw-result" class="result-box hidden"></div>
 
-    <!-- Generate from text -->
+    <!-- Provenance / Origin Analysis card -->
+    <div id="provenance-card" class="provenance-card hidden">
+      <div class="provenance-header">
+        <span class="prov-title">🔎 Origin Analysis</span>
+        <div class="origin-badge" id="origin-badge">—</div>
+      </div>
+      <ul id="provenance-flags" class="provenance-flags"></ul>
+      <p id="provenance-summary" class="prov-summary"></p>
+    </div>
+
+    <!-- ── MODULE B — STRESS-TEST GENERATOR (sub-card) ───────────────── -->
     <div class="sub-card" id="gen-section">
-      <h3>Generate Handwriting from Text</h3>
-      <textarea id="gen-text" placeholder="Type the text you want rendered in this handwriting style…" rows="4"></textarea>
+      <div class="stress-test-header">
+        <h3>⚡ Stress-Test Generator</h3>
+        <span class="stress-badge">Research Tool</span>
+      </div>
+      <p class="sub-card-desc">
+        Generate synthetic handwriting variations to stress-test the authenticity detector.
+        This tool exists to augment training data and expose detector weaknesses — not to produce submission-ready samples.
+        <strong>All outputs are automatically watermarked as [SYNTHETIC – ForgeNet-X].</strong>
+      </p>
+
+      <!-- Consent gate -->
+      <label class="consent-label" id="consent-gate">
+        <input type="checkbox" id="consent-check"/>
+        <span>I confirm this output is for <strong>model training, forensic research, or detector stress-testing only</strong>. I understand all generated samples carry a visible synthetic watermark.</span>
+      </label>
+
+      <textarea id="gen-text" placeholder="Enter text to render as a synthetic handwriting sample for testing…" rows="4"></textarea>
       <button class="btn btn-secondary" onclick="generateText()">
-        ✨ Generate Handwriting
+        ⚡ Generate Synthetic Sample
       </button>
       <div id="gen-result" class="result-box hidden"></div>
       <div id="gen-preview-wrap" class="preview-wrap hidden">
         <img id="gen-preview" class="preview-img" alt="Generated handwriting"/>
-        <a id="gen-download" class="btn btn-ghost" download>⬇ Download Image</a>
+        <span class="watermark-notice">⚠ Watermarked as synthetic</span>
+        <a id="gen-download" class="btn btn-ghost" download>⬇ Download</a>
       </div>
     </div>
   </section>
 
-  <!-- ════════════════════ MODULE 2 — SIGNATURE ═══════════════════════════ -->
+  <!-- ════════════════════ MODULE 1 — SIGNATURE ═══════════════════════════ -->
   <section class="card" id="signature-section">
     <div class="card-header">
       <span class="card-icon">🔏</span>
       <div>
         <h2>Signature Forgery Analysis</h2>
-        <p class="card-desc">Upload an original and a test signature to get a similarity score and risk assessment.</p>
+        <p class="card-desc">Upload an original and a test signature to get a multi-metric similarity score and risk assessment.</p>
       </div>
     </div>
 
     <div class="sig-grid">
       <!-- Original signature -->
       <div class="sig-col">
-        <label class="sig-label">Original Signature</label>
+        <label class="sig-label">Original Signature (Reference)</label>
         <div class="upload-zone small" id="orig-drop-zone">
           <input type="file" id="orig-sig-file" accept="image/*" hidden/>
           <div class="upload-icon">📝</div>
@@ -210,21 +238,21 @@
     </div>
   </section>
 
-  <!-- ═════════════════════ MODULE 3 — REPORT ═════════════════════════════ -->
+  <!-- ═════════════════════ MODULE 2 — REPORT ═════════════════════════════ -->
   <section class="card" id="report-section">
     <div class="card-header">
       <span class="card-icon">📑</span>
       <div>
-        <h2>Generate PDF Report</h2>
-        <p class="card-desc">Bundle all results into a downloadable, professional analysis report.</p>
+        <h2>Generate Forensic PDF Report</h2>
+        <p class="card-desc">Bundle all results into a downloadable professional forensic analysis report.</p>
       </div>
     </div>
     <div class="report-info">
-      The report includes: original &amp; generated handwriting, signature comparison,
-      metric breakdown, risk classification, and a written verdict.
+      The report includes: original &amp; synthetic handwriting samples, origin analysis, signature comparison,
+      preprocessing pipeline visuals, metric breakdown, risk classification, and a written forensic verdict.
     </div>
     <button class="btn btn-accent" onclick="downloadReport()">
-      📥 Download PDF Report
+      📥 Download Forensic Report
     </button>
     <div id="report-result" class="result-box hidden"></div>
   </section>
@@ -233,7 +261,8 @@
 <!-- ════════════════════════════ FOOTER ════════════════════════════════ -->
 <footer class="footer">
   <p>ForgeNet-X &nbsp;|&nbsp; AI/ML Final Year Project &nbsp;|&nbsp;
-     Built with Flask · OpenCV · scikit-image · ReportLab</p>
+     Built with Flask · OpenCV · scikit-image · ReportLab &nbsp;|&nbsp;
+     <a href="ETHICS.md" target="_blank">Ethics Statement</a></p>
 </footer>
 
 <!-- ══════════════════════ LOADING OVERLAY ══════════════════════════════ -->

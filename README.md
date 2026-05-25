@@ -1,17 +1,34 @@
 # ForgeNet-X
-## AI Handwriting Imitation & Signature Forgery Analysis System
+## Forensic Handwriting & Signature Authenticity System
 
 > Final Year AI/ML Project — Offline Flask Web Application (Windows)
 
 ---
 
-## Overview
+## Mission
 
-ForgeNet-X is a modular, fully offline web application that:
-1. Accepts handwriting sample images and extracts writing style features
-2. Generates synthetic handwriting from typed text using the extracted style
-3. Compares original vs. test signature images using computer vision
-4. Outputs a similarity score, risk classification, and a downloadable PDF report
+ForgeNet-X is a **forensic detection tool first**. Its primary purpose is to authenticate handwriting samples and detect signature forgeries using computer vision. The synthetic handwriting generator is a **research sub-feature** — it exists to stress-test the detector and produce augmented training data. All generated outputs are automatically watermarked as `[SYNTHETIC – ForgeNet-X]` to prevent misuse.
+
+See [`ETHICS.md`](ETHICS.md) for the full responsible-use statement.
+
+---
+
+## System Architecture
+
+### Module A — Forensic Analysis Engine (Core)
+| Component | Role |
+|-----------|------|
+| Handwriting Authentication | Preprocesses uploaded samples, extracts characters, runs provenance/origin analysis |
+| Signature Forgery Detection | Compares original vs. test signatures via SSIM, Hu Moments, histogram, pixel distance |
+| PDF Forensic Report | Bundles all results, visuals, origin analysis, and verdict into a downloadable report |
+
+### Module B — Stress-Test Generator (Research Support)
+| Component | Role |
+|-----------|------|
+| Synthetic Handwriting Engine | Renders typed text in a captured style, bakes `[SYNTHETIC]` watermark |
+| Generation Audit Log | Records every generation event with timestamp and declared purpose |
+
+The generator **exists to make the detector better** — the same adversarial relationship used in robustness research. It does not operate as a standalone tool.
 
 ---
 
@@ -20,36 +37,34 @@ ForgeNet-X is a modular, fully offline web application that:
 ```
 ForgeNet-X/
 │
-├── app.py                        ← Flask app & all routes (pathlib paths)
+├── app.py                        ← Flask app & all routes
 ├── requirements.txt              ← Python dependencies
-├── setup.bat                     ← Double-click to install (Windows CMD)
-├── setup.ps1                     ← PowerShell alternative
-├── run.bat                       ← Double-click to start server
+├── ETHICS.md                     ← Responsible-use & dual-use statement
 │
 ├── templates/
-│   └── index.html                ← Main UI (Jinja2 template)
+│   └── index.html                ← Forensic UI (detection-first layout)
 │
 ├── static/
 │   ├── css/style.css             ← Dark forensics UI
-│   └── js/app.js                 ← Frontend logic (Fetch API + drag-drop)
+│   └── js/app.js                 ← Frontend logic (consent gate, provenance display)
 │
 ├── uploads/
 │   ├── handwriting/              ← Uploaded handwriting images
 │   └── signatures/               ← Uploaded signature images
 │
 ├── outputs/
-│   ├── generated/                ← Generated handwriting images
-│   └── reports/                  ← PDF report files
-│
-├── models/                       ← (Future) trained model weights
+│   ├── generated/                ← Synthetic outputs (watermarked)
+│   ├── reports/                  ← PDF forensic report files
+│   ├── visuals/                  ← Preprocessing & segmentation annotation PNGs
+│   └── generation_log.jsonl      ← Audit trail for every synthetic generation
 │
 └── utils/
-    ├── __init__.py
-    ├── preprocessing.py          ← Grayscale, denoise, binarise, resize
-    ├── segmentation.py           ← Contour-based character extraction
-    ├── handwriting.py            ← Character atlas + text stitching
-    ├── signature_analysis.py     ← SSIM, Hu, histogram, pixel metrics
-    └── pdf_generator.py          ← ReportLab PDF report builder
+    ├── preprocessing.py          ← CLAHE + adaptive threshold pipeline (8 stages)
+    ├── segmentation.py           ← Vertical projection valley character extraction
+    ├── handwriting.py            ← Synthetic generator + watermark baking
+    ├── signature_analysis.py     ← SSIM, Hu, histogram, pixel forgery metrics
+    ├── pdf_generator.py          ← ReportLab forensic PDF builder
+    └── provenance.py             ← EXIF metadata + synthetic origin classifier
 ```
 
 ---
@@ -62,8 +77,6 @@ ForgeNet-X/
   - During install, check **"Add Python to PATH"** ✅
 - No internet connection required after first install
 
----
-
 ### Method 1 — Double-click (easiest)
 
 1. Double-click `setup.bat`
@@ -71,38 +84,21 @@ ForgeNet-X/
 3. Double-click `run.bat`
 4. Open browser → **http://localhost:5000**
 
----
-
 ### Method 2 — Command Prompt
 
 ```cmd
 cd ForgeNet-X
-
-:: Create & activate virtual environment
 python -m venv venv
 venv\Scripts\activate
-
-:: Install dependencies
 pip install -r requirements.txt
-
-:: Run the app
 python app.py
 ```
-
----
 
 ### Method 3 — PowerShell
 
 ```powershell
-cd ForgeNet-X
-
-# Allow script execution (run once)
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-
-# Run setup
 .\setup.ps1
-
-# Then start the server
 .\venv\Scripts\Activate.ps1
 python app.py
 ```
@@ -111,59 +107,72 @@ python app.py
 
 ## API Endpoints
 
-| Method | Route                  | Description                              |
-|--------|------------------------|------------------------------------------|
-| GET    | `/`                    | Homepage                                 |
-| POST   | `/upload_handwriting`  | Upload & preprocess handwriting image    |
-| POST   | `/generate_text`       | Generate handwriting from typed text     |
-| POST   | `/upload_signature`    | Upload original + test signatures        |
-| POST   | `/analyze_signature`   | Run forgery analysis, return JSON result |
-| POST   | `/download_report`     | Generate and stream PDF report           |
-| GET    | `/download/<f>/<n>`    | Download a generated file                |
+| Method | Route                  | Description                                      |
+|--------|------------------------|--------------------------------------------------|
+| GET    | `/`                    | Homepage                                         |
+| POST   | `/upload_handwriting`  | Upload, preprocess, segment, run origin analysis |
+| POST   | `/generate_text`       | Generate watermarked synthetic sample, log event |
+| POST   | `/upload_signature`    | Upload original + test signatures                |
+| POST   | `/analyze_signature`   | Run forgery analysis, return JSON result         |
+| POST   | `/download_report`     | Generate and stream forensic PDF report          |
+| GET    | `/download/<f>/<n>`    | Download a generated file                        |
 
 ---
 
 ## Module Descriptions
 
 ### `utils/preprocessing.py`
-Converts raw images to clean binary representation:
-- Grayscale conversion → Gaussian blur → Otsu thresholding
-- Morphological cleaning, aspect-preserving resize
-- Deskew utility, style feature extraction (stroke width, slant, line spacing)
+Eight-stage adaptive binarisation pipeline:
+- Bilateral filter → CLAHE → Adaptive Gaussian + Otsu AND-blend
+- Morphological open/close → connected-component blob filter → resize
 
 ### `utils/segmentation.py`
-Extracts individual characters:
-- External contour detection with size filtering
-- Reading-order sort (top→bottom, left→right)
-- Character crops saved as PNGs with JSON manifest
+Vertical projection valley character extraction (replaces contour-first approach):
+- Handles `i`, `j`, `k` correctly — no fragile dot-merge heuristics
+- Produces `manifest.json` + `line_map.json` for accurate atlas labelling
+
+### `utils/provenance.py`
+Origin analysis classifier:
+- EXIF metadata extraction (camera, software, date)
+- Heuristic scoring: background purity, sensor noise, software flags
+- Output: `origin_label` (Likely Human / Possibly Synthetic / Likely Synthetic)
 
 ### `utils/handwriting.py`
-Generates handwriting from text:
-- Character atlas from uploaded sample
-- Per-character random vertical jitter for natural look
-- Windows font fallback: Arial → Calibri → Courier → PIL default
-- Explicit temp-dir cleanup (Windows GC is less aggressive than Linux)
+Synthetic stress-test generator:
+- Atlas-based character stitching with vertical jitter and kerning variation
+- Bakes `[SYNTHETIC – ForgeNet-X]` watermark via PIL alpha-compositing
 
 ### `utils/signature_analysis.py`
-Multi-metric signature comparison:
+Multi-metric forgery detection:
 - SSIM (40%) + Hu Moments (25%) + Histogram (20%) + Pixel (15%)
-- Composite score → Low / Moderate / High Risk
+- Composite score → Low / Moderate / High Risk + feature comparison table
 
 ### `utils/pdf_generator.py`
-Professional PDF using ReportLab (no system fonts needed):
-- Cover page, handwriting section, signature section
-- Metric breakdown table, risk badge, feature delta table
-- Page header/footer on every page
+Professional forensic PDF via ReportLab:
+- Cover page, origin analysis, preprocessing pipeline, segmentation atlas
+- Signature metric breakdown, risk badge, feature delta table, verdict
 
 ---
 
 ## Similarity Score & Risk Levels
 
 | Score | Risk Level | Meaning |
-|-------|-----------|---------|
-| ≥ 80% | 🟢 Low Risk | Signatures closely match — likely genuine |
-| 50–79% | 🟡 Moderate Risk | Partial match — manual review recommended |
-| < 50% | 🔴 High Risk | Signatures differ significantly — likely forged |
+|-------|------------|---------|
+| ≥ 80% | Low Risk   | Signatures closely match — likely genuine |
+| 50–79% | Moderate Risk | Partial match — manual review recommended |
+| < 50% | High Risk  | Signatures differ significantly — likely forged |
+
+---
+
+## Ethical Guardrails
+
+| Guardrail | Implementation |
+|-----------|----------------|
+| Consent gate | Checkbox required before any synthetic generation |
+| Automatic watermark | `[SYNTHETIC – ForgeNet-X]` baked into every output image |
+| Generation audit log | `outputs/generation_log.jsonl` records timestamp + declared purpose |
+| Origin analysis | Every uploaded sample is scored for synthetic vs. human origin |
+| Full ethics statement | See `ETHICS.md` |
 
 ---
 
@@ -182,34 +191,20 @@ Professional PDF using ReportLab (no system fonts needed):
 
 ## Post-MVP Improvements
 
-### Deep Learning (Handwriting Realism)
-Replace the stitching engine in `utils/handwriting.py` with:
-- **ScrabbleGAN / HandwritingGAN** — conditional GAN, trains on IAM dataset
-- **CNN + BiLSTM** — sequence model with attention for stroke prediction
-- **ViT Transformer** — patch-based, best quality, highest GPU cost
+### Stronger Detection
+- **Siamese CNN** with contrastive loss for signature verification — replaces hand-crafted metrics
+- **Synthetic-vs-real classifier** trained on IAM dataset — upgrades the heuristic provenance scorer
+- **Writer identification** — determine whether two handwriting samples share the same author
 
-### SaaS / Cloud Deployment
+### Generative Research Tools
+- **ScrabbleGAN / HandwritingGAN** — conditional GAN for higher-fidelity synthetic samples
+- **Stroke-level augmentation** — vary pressure, speed, and slant for more diverse stress-tests
+
+### Deployment
 ```
-Backend    : Gunicorn + Nginx (Linux server)
-Container  : Docker + docker-compose
-Cloud      : AWS EC2 / GCP Cloud Run / Azure App Service
-Queue      : Celery + Redis (async report generation)
-Storage    : S3 / Azure Blob Storage
-Auth       : JWT / OAuth2
-DB         : PostgreSQL (user accounts, report history)
+Backend  : Gunicorn + Nginx
+Container: Docker + docker-compose
+Cloud    : AWS EC2 / GCP Cloud Run
+Queue    : Celery + Redis (async report generation)
+Auth     : JWT / OAuth2 — required before any generation feature is accessible
 ```
-
-### GPU Acceleration (Windows)
-```
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-# Replace numpy ops with CuPy for preprocessing
-# Use torch.cuda.amp for mixed-precision inference
-```
-
----
-
-## Disclaimer
-
-This tool is for academic and research purposes only. All results must be
-reviewed by a qualified forensic document examiner before any legal,
-financial, or investigative action is taken.

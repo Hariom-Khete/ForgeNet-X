@@ -289,6 +289,94 @@ textarea:focus { outline: none; border-color: var(--blue); }
 @keyframes spin { to { transform: rotate(360deg); } }
 #overlay-msg { color: var(--text-muted); font-size: 0.9rem; font-family: var(--mono); }
 
+/* ── Provenance / Origin Analysis card ──────────── */
+.provenance-card {
+  margin-top: 1rem; border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2); padding: 1rem 1.2rem;
+}
+.provenance-header {
+  display: flex; align-items: center;
+  justify-content: space-between; margin-bottom: 0.6rem;
+}
+.prov-title { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+.origin-badge {
+  font-size: 0.78rem; font-weight: 700; padding: 0.25rem 0.8rem;
+  border-radius: 20px; border: 1px solid var(--green);
+  color: var(--green); background: rgba(39,174,96,0.12);
+}
+.origin-badge.orange { color: var(--orange); border-color: var(--orange);
+                       background: rgba(243,156,18,0.12); }
+.origin-badge.red    { color: var(--red);    border-color: var(--red);
+                       background: rgba(192,57,43,0.12); }
+.provenance-flags {
+  list-style: none; padding: 0; margin: 0 0 0.5rem;
+  display: flex; flex-direction: column; gap: 0.25rem;
+}
+.provenance-flags li {
+  font-size: 0.78rem; color: var(--text-muted);
+  padding-left: 1rem; position: relative;
+}
+.provenance-flags li::before {
+  content: '⚑'; position: absolute; left: 0;
+  color: var(--orange); font-size: 0.65rem; top: 0.1rem;
+}
+.prov-summary {
+  font-size: 0.8rem; color: var(--text-muted);
+  font-style: italic; margin: 0;
+}
+
+/* ── Stress-Test Generator (sub-card header) ─────── */
+.stress-test-header {
+  display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;
+}
+.stress-test-header h3 { font-size: 1rem; margin: 0; }
+.stress-badge {
+  font-size: 0.65rem; font-family: var(--mono); font-weight: 600;
+  background: rgba(79,142,247,0.15); color: var(--blue);
+  border: 1px solid var(--blue); padding: 0.15rem 0.55rem;
+  border-radius: 20px; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.sub-card-desc {
+  font-size: 0.82rem; color: var(--text-muted);
+  margin-bottom: 1rem; line-height: 1.5;
+}
+
+/* ── Consent gate ────────────────────────────────── */
+.consent-label {
+  display: flex; align-items: flex-start; gap: 0.65rem;
+  background: rgba(233,69,96,0.06); border: 1px solid rgba(233,69,96,0.25);
+  border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 1rem;
+  cursor: pointer; font-size: 0.82rem; color: var(--text-muted);
+  line-height: 1.45;
+}
+.consent-label input[type="checkbox"] {
+  flex-shrink: 0; width: 16px; height: 16px;
+  accent-color: var(--accent); margin-top: 0.1rem;
+}
+.consent-label strong { color: var(--text); }
+
+/* ── Watermark notice ────────────────────────────── */
+.watermark-notice {
+  font-size: 0.72rem; font-family: var(--mono);
+  color: var(--orange); padding: 0.2rem 0.6rem;
+  border: 1px solid rgba(243,156,18,0.35);
+  border-radius: 6px; background: rgba(243,156,18,0.06);
+}
+
+/* ── Segmentation quality badge ─────────────────── */
+.seg-quality-badge {
+  display: inline-block; font-size: 0.7rem; font-family: var(--mono);
+  padding: 0.15rem 0.55rem; border-radius: 5px;
+  vertical-align: middle; margin-left: 0.5rem; cursor: default;
+}
+.seg-qual-ok   { color: #2ecc71; background: rgba(46,204,113,0.1);
+                  border: 1px solid rgba(46,204,113,0.3); }
+.seg-qual-warn { color: #f39c12; background: rgba(243,156,18,0.1);
+                  border: 1px solid rgba(243,156,18,0.3); }
+.seg-qual-bad  { color: #e74c3c; background: rgba(231,76,60,0.1);
+                  border: 1px solid rgba(231,76,60,0.3); }
+
 /* ── Responsive ──────────────────────────────────── */
 @media (max-width: 700px) {
   .hero { flex-direction: column; padding: 2rem 1.5rem; gap: 1.5rem; }

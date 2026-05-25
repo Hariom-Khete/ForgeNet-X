@@ -1,15 +1,16 @@
 /**
  * ForgeNet-X — Frontend Logic
- * Handles: file uploads, API calls, UI updates, dashboard rendering
+ * Detection-first forensic tool. Generation is a research/stress-test sub-feature.
  */
 
 // ── State ────────────────────────────────────────────────────────────────────
 const STATE = {
   hwFilename   : null,   // uploaded handwriting filename
-  genFilename  : null,   // generated output filename
+  genFilename  : null,   // generated synthetic output filename
   origSig      : null,   // original signature filename
   testSig      : null,   // test signature filename
   analysis     : {},     // last analysis result dict
+  provenance   : {},     // last origin analysis result
 };
 
 // ── DOM shortcuts ─────────────────────────────────────────────────────────────
@@ -42,12 +43,11 @@ function showResult(elId, msg, type = "success") {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MODULE 1 — Handwriting
+// MODULE A — Handwriting Authentication
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Drag-and-drop for handwriting upload zone
 (function setupHwDrop() {
-  const zone = $("hw-drop-zone");
+  const zone  = $("hw-drop-zone");
   const input = $("hw-file");
 
   zone.addEventListener("dragover", e => {
@@ -75,7 +75,6 @@ function previewHw(file) {
     $("hw-drop-zone").classList.add("hidden");
   };
   reader.readAsDataURL(file);
-  // Store file reference
   const dt = new DataTransfer();
   dt.items.add(file);
   $("hw-file").files = dt.files;
@@ -86,13 +85,15 @@ function clearHw() {
   $("hw-drop-zone").classList.remove("hidden");
   $("hw-file").value = "";
   STATE.hwFilename = null;
+  $("provenance-card").classList.add("hidden");
+  $("hw-result").classList.add("hidden");
 }
 
 async function uploadHandwriting() {
   const file = $("hw-file").files[0];
   if (!file) { alert("Please select a handwriting image first."); return; }
 
-  showOverlay("Analysing handwriting…");
+  showOverlay("Authenticating handwriting…");
   const formData = new FormData();
   formData.append("file", file);
 
@@ -101,10 +102,27 @@ async function uploadHandwriting() {
       method: "POST", body: formData
     });
     STATE.hwFilename = data.filename;
+    STATE.provenance = data.provenance || {};
+
+    // Structural-context quality badge
+    const q    = data.seg_quality || {};
+    const det  = q.detected  != null ? q.detected : data.char_count;
+    const exp  = q.expected  != null ? q.expected : "?";
+    const qual = q.quality   || "unknown";
+    const qCls = qual === "exact"        ? "seg-qual-ok"
+               : qual.startsWith("near") ? "seg-qual-warn"
+               :                           "seg-qual-bad";
+    const qBadge = `<span class="seg-quality-badge ${qCls}"
+        title="Detected ${det} of ${exp} expected characters (${qual})">${
+        qual === "exact" ? "✓ Labels OK" : `⚠ ${det} / ${exp} chars`
+      }</span>`;
+
     showResult("hw-result",
-      `✓ Processed  |  Characters detected: ${data.char_count}  |  File: ${data.filename}`,
+      `✓ Processed  |  Characters detected: ${det}  |  File: ${data.filename}  ${qBadge}`,
       "success"
     );
+
+    renderProvenance(data.provenance);
     activateStep(2);
   } catch (err) {
     showResult("hw-result", "✗ " + err.message, "error");
@@ -113,15 +131,53 @@ async function uploadHandwriting() {
   }
 }
 
+// ── Provenance / Origin Analysis display ──────────────────────────────────────
+function renderProvenance(prov) {
+  if (!prov) return;
+
+  const card   = $("provenance-card");
+  const badge  = $("origin-badge");
+  const flags  = $("provenance-flags");
+  const summary = $("provenance-summary");
+
+  card.classList.remove("hidden");
+
+  badge.textContent = prov.origin_label || "—";
+  badge.className   = "origin-badge";
+  if (prov.origin_color === "orange") badge.classList.add("orange");
+  if (prov.origin_color === "red")    badge.classList.add("red");
+
+  flags.innerHTML = "";
+  (prov.flags || []).forEach(flag => {
+    const li = document.createElement("li");
+    li.textContent = flag;
+    flags.appendChild(li);
+  });
+
+  summary.textContent = prov.summary || "";
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE B — Stress-Test Generator (sub-feature of Module A)
+// ══════════════════════════════════════════════════════════════════════════════
+
 async function generateText() {
   if (!STATE.hwFilename) {
-    alert("Please upload and analyse a handwriting sample first.");
+    alert("Please upload and authenticate a handwriting sample first.");
     return;
   }
+
+  const consent = $("consent-check");
+  if (!consent.checked) {
+    alert("Please read and accept the research-purpose declaration before generating a synthetic sample.");
+    consent.focus();
+    return;
+  }
+
   const text = $("gen-text").value.trim();
   if (!text) { alert("Please enter some text to generate."); return; }
 
-  showOverlay("Generating handwriting…");
+  showOverlay("Generating synthetic sample…");
   try {
     const data = await apiFetch("/generate_text", {
       method  : "POST",
@@ -129,12 +185,15 @@ async function generateText() {
       body    : JSON.stringify({ hw_filename: STATE.hwFilename, text }),
     });
     STATE.genFilename = data.output_file;
-    showResult("gen-result", `✓ Generated: ${data.output_file}`, "success");
+    showResult("gen-result",
+      `✓ Synthetic sample generated & watermarked: ${data.output_file}`,
+      "success"
+    );
 
-    // Show preview via download URL
     $("gen-preview").src = data.download_url;
     $("gen-download").href = data.download_url;
     $("gen-preview-wrap").classList.remove("hidden");
+    activateStep(3);
   } catch (err) {
     showResult("gen-result", "✗ " + err.message, "error");
   } finally {
@@ -143,10 +202,9 @@ async function generateText() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MODULE 2 — Signatures
+// MODULE 1 — Signature Forensics
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Setup drag-drop for both signature zones
 ["orig", "test"].forEach(prefix => {
   const zone  = $(`${prefix}-drop-zone`);
   const input = $(`${prefix}-sig-file`);
@@ -203,7 +261,6 @@ async function uploadSignatures() {
       "success"
     );
     $("btn-analyze").disabled = false;
-    activateStep(3);
   } catch (err) {
     showResult("sig-upload-result", "✗ " + err.message, "error");
   } finally {
@@ -238,7 +295,6 @@ async function analyzeSignatures() {
 function renderDashboard(data) {
   $("analysis-dashboard").classList.remove("hidden");
 
-  // Score ring (circumference = 2πr = 2π×50 ≈ 314)
   const pct    = data.similarity_score / 100;
   const offset = 314 - (314 * pct);
   const ring   = $("ring-fill");
@@ -248,24 +304,19 @@ function renderDashboard(data) {
 
   $("score-text").textContent = data.similarity_score.toFixed(1) + "%";
 
-  // Risk badge
   const badge = $("risk-badge");
   badge.textContent = data.risk_level;
   badge.className   = "risk-badge";
   if (data.risk_color === "orange") badge.classList.add("orange");
   if (data.risk_color === "red")    badge.classList.add("red");
 
-  // Metric bars
   setBar("ssim",  data.ssim_score);
   setBar("hu",    data.hu_score);
   setBar("hist",  data.hist_score);
   setBar("pixel", data.pixel_score);
 
-  // Verdict
-  $("verdict-box").innerHTML =
-    `<strong>🔍 Verdict:</strong> ${data.verdict}`;
+  $("verdict-box").innerHTML = `<strong>🔍 Forensic Verdict:</strong> ${data.verdict}`;
 
-  // Feature comparison table
   if (data.features_original && data.features_test) {
     renderFeatureTable(data.features_original, data.features_test);
   }
@@ -275,7 +326,6 @@ function setBar(key, value) {
   const pct = Math.min(100, Math.max(0, value || 0));
   $(`bar-${key}`).style.width  = pct + "%";
   $(`val-${key}`).textContent  = pct.toFixed(1) + "%";
-  // Colour by score
   $(`bar-${key}`).style.background =
     pct >= 80 ? "var(--green)" :
     pct >= 50 ? "var(--orange)" : "var(--red)";
@@ -321,11 +371,11 @@ function renderFeatureTable(orig, test) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MODULE 3 — Report
+// MODULE 2 — Forensic Report
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function downloadReport() {
-  showOverlay("Generating PDF report…");
+  showOverlay("Generating forensic PDF report…");
   try {
     const res = await fetch("/download_report", {
       method  : "POST",
@@ -344,16 +394,15 @@ async function downloadReport() {
       throw new Error(err.error || "Report generation failed");
     }
 
-    // Trigger download
     const blob = await res.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = "ForgeNet-X_Report.pdf";
+    a.download = "ForgeNet-X_Forensic_Report.pdf";
     a.click();
     URL.revokeObjectURL(url);
 
-    showResult("report-result", "✓ Report downloaded successfully", "success");
+    showResult("report-result", "✓ Forensic report downloaded successfully", "success");
   } catch (err) {
     showResult("report-result", "✗ " + err.message, "error");
   } finally {
@@ -371,5 +420,5 @@ function activateStep(n) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
   activateStep(1);
-  console.log("ForgeNet-X v1.0 — Ready");
+  console.log("ForgeNet-X v1.0 — Forensic Auth Ready");
 });
