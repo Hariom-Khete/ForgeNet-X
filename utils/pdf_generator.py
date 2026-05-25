@@ -1,32 +1,4 @@
-"""
-utils/pdf_generator.py
-───────────────────────
-ForgeNet-X — PDF Report Generator  (Windows-compatible)
-
-Report structure
-────────────────
-  Page 1   Cover  (title, timestamp, system info table)
-
-  §1  Handwriting Analysis
-        1a  Original vs Generated images  (side-by-side)
-
-  §2  Preprocessing Pipeline  ← NEW
-        2a  5-stage annotated images  (one per row, full-width)
-            Each image already carries its own step banner from preprocessing.py
-
-  §3  Character Segmentation  ← NEW
-        3a  Segmentation overview  (bounding boxes + colour-coded labels)
-        3b  Character atlas sheet  (tiled crops with index + label)
-        3c  Label assignment explanation table
-
-  §4  Signature Forgery Analysis
-        4a  Original vs test signature  (side-by-side)
-        4b  Per-metric score table
-        4c  Risk badge
-        4d  Feature comparison table
-
-  §5  Conclusion & Disclaimer
-"""
+"""ForgeNet-X — PDF Report Generator"""
 
 import os
 from datetime import datetime
@@ -56,13 +28,11 @@ C_TEAL      = colors.HexColor("#1ABC9C")
 RISK_COLORS = {"green": C_SUCCESS, "orange": C_WARNING, "red": C_DANGER}
 
 PAGE_W, PAGE_H = A4
-MARGIN = 2 * cm
-INNER_W = PAGE_W - 2 * MARGIN   # usable content width
+MARGIN  = 2 * cm
+INNER_W = PAGE_W - 2 * MARGIN
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Public API
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Public API ─────────────────────────────────────────────────────────────────
 
 def generate_report(
     hw_path        : "str | None",
@@ -71,11 +41,11 @@ def generate_report(
     test_sig       : "str | None",
     analysis       : dict,
     output_path    : str,
-    # Visual confirmation
-    pipeline_paths : dict  = None,   # {stage_key: png_path}
+    pipeline_paths : dict  = None,
     seg_overview   : "str | None" = None,
     atlas_sheet    : "str | None" = None,
     line_debug     : "str | None" = None,
+    provenance     : dict  = None,
 ) -> str:
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -86,47 +56,37 @@ def generate_report(
         topMargin=1.8*cm, bottomMargin=1.4*cm,
     )
 
-    S = _styles()
+    S     = _styles()
     story = []
 
-    # § Cover
     story += _cover(S)
 
-    # § 1  Handwriting
     if hw_path or gen_path:
-        story += _section_handwriting(hw_path, gen_path, S)
+        story += _section_handwriting(hw_path, gen_path, provenance, S)
 
-    # § 2  Preprocessing pipeline
     if pipeline_paths:
         story += _section_preprocessing(pipeline_paths, S)
 
-    # § 3  Segmentation
     if seg_overview or atlas_sheet or line_debug:
         story += _section_segmentation(seg_overview, atlas_sheet, line_debug, S)
 
-    # § 4  Signature analysis
     if orig_sig or test_sig or analysis:
         story += _section_signature(orig_sig, test_sig, analysis, S)
 
-    # § 5  Conclusion
     story += _section_conclusion(analysis, S)
 
-    doc.build(story,
-              onFirstPage=_header_footer,
-              onLaterPages=_header_footer)
+    doc.build(story, onFirstPage=_header_footer, onLaterPages=_header_footer)
     return output_path
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Section builders
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Section builders ───────────────────────────────────────────────────────────
 
 def _cover(S) -> list:
     e = []
     e.append(Spacer(1, 2.5*cm))
     e.append(Paragraph("ForgeNet-X", S["title"]))
     e.append(Paragraph(
-        "AI Handwriting Imitation &amp; Signature Forgery Analysis System",
+        "Forensic Handwriting &amp; Signature Authenticity System",
         S["subtitle"]))
     e.append(HRFlowable(width="100%", thickness=2, color=C_RED, spaceAfter=10))
     e.append(Spacer(1, 0.8*cm))
@@ -139,10 +99,10 @@ def _cover(S) -> list:
 
     info = [
         ["System",    "ForgeNet-X v1.0"],
-        ["Purpose",   "Handwriting imitation & signature forgery detection"],
-        ["Method",    "Image processing + Computer vision (OpenCV · scikit-image)"],
-        ["Libraries", "Flask · OpenCV · NumPy · scikit-image · ReportLab"],
-        ["Report",    "Full pipeline visuals, segmentation atlas, forgery metrics"],
+        ["Purpose",   "Forensic detection of signature forgery & handwriting authenticity"],
+        ["Method",    "Image processing + Computer vision (OpenCV · scikit-image · EXIF)"],
+        ["Libraries", "Flask · OpenCV · NumPy · scikit-image · ReportLab · Pillow"],
+        ["Report",    "Origin analysis, pipeline visuals, segmentation atlas, forgery metrics"],
     ]
     t = Table(info, colWidths=[4.5*cm, 11.5*cm])
     t.setStyle(TableStyle([
@@ -161,20 +121,22 @@ def _cover(S) -> list:
     return e
 
 
-# ── § 1 ───────────────────────────────────────────────────────────────────────
-def _section_handwriting(hw_path, gen_path, S) -> list:
+def _section_handwriting(hw_path, gen_path, provenance, S) -> list:
     e = []
-    e += _section_title("1", "Handwriting Analysis", C_ACCENT, S)
+    e += _section_title("1", "Handwriting Authenticity Analysis", C_ACCENT, S)
     e.append(Paragraph(
-        "The original handwriting sample uploaded by the user (left) and the "
-        "synthetically generated text rendered in the same writing style (right).",
+        "The original handwriting sample submitted for forensic analysis (left) "
+        "and, if generated, the synthetic stress-test output watermarked as "
+        "[SYNTHETIC – ForgeNet-X] (right).  Synthetic outputs are produced solely "
+        "for detector stress-testing and model training — they are not intended "
+        "to represent genuine handwriting.",
         S["body"]))
     e.append(Spacer(1, 0.3*cm))
 
     half = INNER_W / 2 - 0.3*cm
     row  = []
-    for path, label in [(hw_path, "Original Handwriting Sample"),
-                        (gen_path, "Generated Handwriting Output")]:
+    for path, label in [(hw_path, "Submitted Handwriting Sample"),
+                        (gen_path, "Synthetic Stress-Test Output  [WATERMARKED]")]:
         col = [Paragraph(label, S["cap"])]
         if path and os.path.exists(path):
             col.append(Image(path, width=half, height=5*cm, kind="proportional"))
@@ -184,19 +146,85 @@ def _section_handwriting(hw_path, gen_path, S) -> list:
 
     t = Table([row], colWidths=[half + 0.3*cm, half + 0.3*cm])
     t.setStyle(TableStyle([
-        ("VALIGN",    (0,0), (-1,-1), "TOP"),
-        ("ALIGN",     (0,0), (-1,-1), "CENTER"),
-        ("BOX",       (0,0), (-1,-1), 0.5, colors.lightgrey),
-        ("INNERGRID", (0,0), (-1,-1), 0.5, colors.lightgrey),
-        ("TOPPADDING",(0,0), (-1,-1), 6),
-        ("BOTTOMPADDING",(0,0),(-1,-1),6),
+        ("VALIGN",       (0,0), (-1,-1), "TOP"),
+        ("ALIGN",        (0,0), (-1,-1), "CENTER"),
+        ("BOX",          (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ("INNERGRID",    (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ("TOPPADDING",   (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING",(0,0), (-1,-1), 6),
     ]))
     e.append(t)
     e.append(Spacer(1, 0.5*cm))
+
+    if provenance:
+        e += _subsection_origin(provenance, S)
+
     return e
 
 
-# ── § 2 ───────────────────────────────────────────────────────────────────────
+def _subsection_origin(prov: dict, S) -> list:
+    e = []
+    e.append(_sub_header("1b — Origin Analysis  (Provenance Classifier)", C_TEAL, S))
+
+    label     = prov.get("origin_label", "—")
+    score     = prov.get("synthetic_score", 0)
+    color_map = {"green": C_SUCCESS, "orange": C_WARNING, "red": C_DANGER}
+    badge_col = color_map.get(prov.get("origin_color", "green"), C_SUCCESS)
+
+    badge_row = [[
+        Paragraph(f"Origin: <b>{label}</b>", S["badge_txt"]),
+        Paragraph(f"Synthetic Score: <b>{score:.0f} / 100</b>", S["badge_txt"]),
+    ]]
+    bt = Table(badge_row, colWidths=[INNER_W / 2, INNER_W / 2])
+    bt.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (0,0), badge_col),
+        ("BACKGROUND",    (1,0), (1,0), C_ACCENT),
+        ("TEXTCOLOR",     (0,0), (-1,-1), colors.white),
+        ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING",    (0,0), (-1,-1), 8),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+    ]))
+    e.append(bt)
+    e.append(Spacer(1, 0.3*cm))
+
+    meta = [
+        ["Has EXIF",      "Yes" if prov.get("has_exif") else "No"],
+        ["Camera Make",   prov.get("camera_make")  or "—"],
+        ["Camera Model",  prov.get("camera_model") or "—"],
+        ["Software",      prov.get("software")     or "—"],
+        ["Date/Time",     prov.get("datetime_original") or "—"],
+    ]
+    mt = Table(meta, colWidths=[4*cm, INNER_W - 4*cm])
+    mt.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (0,-1), C_LIGHT),
+        ("FONTNAME",      (0,0), (0,-1), "Helvetica-Bold"),
+        ("FONTSIZE",      (0,0), (-1,-1), 8),
+        ("ROWBACKGROUNDS",(0,0), (-1,-1), [colors.white, C_LIGHT]),
+        ("BOX",           (0,0), (-1,-1), 0.4, C_ACCENT),
+        ("INNERGRID",     (0,0), (-1,-1), 0.2, colors.lightgrey),
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+    ]))
+    e.append(mt)
+    e.append(Spacer(1, 0.25*cm))
+
+    flags = prov.get("flags", [])
+    if flags:
+        e.append(Paragraph("<b>Detected indicators:</b>", S["body"]))
+        for flag in flags:
+            e.append(Paragraph(f"⚑  {flag}", S["body"]))
+
+    summary = prov.get("summary", "")
+    if summary:
+        e.append(Spacer(1, 0.2*cm))
+        e.append(Paragraph(f"<i>{summary}</i>", S["disclaimer"]))
+
+    e.append(Spacer(1, 0.4*cm))
+    return e
+
+
+# ── Pipeline stage descriptions ────────────────────────────────────────────────
 PIPELINE_DESCS = {
     "original"  : ("BGR colour image loaded directly from disk.",
                    "No processing applied — serves as the ground-truth reference."),
@@ -227,6 +255,7 @@ STAGE_COLORS = {
     "resized"   : colors.HexColor("#EC407A"),
 }
 
+
 def _section_preprocessing(pipeline_paths: dict, S) -> list:
     e = []
     e.append(PageBreak())
@@ -239,8 +268,8 @@ def _section_preprocessing(pipeline_paths: dict, S) -> list:
         S["body"]))
     e.append(Spacer(1, 0.4*cm))
 
-    # Ordered display
-    stage_order = ["original", "gray", "bilateral", "clahe", "adaptive", "otsu_mask", "binary", "resized"]
+    stage_order = ["original", "gray", "bilateral", "clahe",
+                   "adaptive", "otsu_mask", "binary", "resized"]
 
     for i, key in enumerate(stage_order):
         path = pipeline_paths.get(key)
@@ -250,7 +279,6 @@ def _section_preprocessing(pipeline_paths: dict, S) -> list:
         title_txt, detail_txt = PIPELINE_DESCS.get(key, ("", ""))
         acc = STAGE_COLORS.get(key, C_ACCENT)
 
-        # Stage number badge + title
         badge_data = [[
             Paragraph(f"Stage {i+1}", S["badge_num"]),
             Paragraph(f"<b>{title_txt}</b><br/>"
@@ -259,30 +287,26 @@ def _section_preprocessing(pipeline_paths: dict, S) -> list:
         ]]
         badge_t = Table(badge_data, colWidths=[2*cm, INNER_W - 2*cm])
         badge_t.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (0,0), acc),
-            ("TEXTCOLOR",  (0,0), (0,0), colors.white),
-            ("ALIGN",      (0,0), (0,0), "CENTER"),
-            ("VALIGN",     (0,0), (-1,-1), "MIDDLE"),
-            ("TOPPADDING", (0,0), (-1,-1), 4),
-            ("BOTTOMPADDING",(0,0),(-1,-1),4),
-            ("BOX",        (0,0), (-1,-1), 0.5, acc),
+            ("BACKGROUND",    (0,0), (0,0), acc),
+            ("TEXTCOLOR",     (0,0), (0,0), colors.white),
+            ("ALIGN",         (0,0), (0,0), "CENTER"),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("TOPPADDING",    (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ("BOX",           (0,0), (-1,-1), 0.5, acc),
         ]))
         e.append(badge_t)
-
-        # Full-width image
         e.append(Image(path, width=INNER_W, height=5.5*cm, kind="proportional"))
         e.append(Spacer(1, 0.5*cm))
 
     return e
 
 
-# ── § 3 ───────────────────────────────────────────────────────────────────────
 def _section_segmentation(seg_overview, atlas_sheet, line_debug, S) -> list:
     e = []
     e.append(PageBreak())
     e += _section_title("3", "Character Segmentation", C_ACCENT, S)
 
-    # 3a — Overview
     e.append(_sub_header("3a — Segmentation Overview  (Bounding Boxes)", C_PURPLE, S))
     e.append(Paragraph(
         "The preprocessed binary image is scanned for external contours.  "
@@ -297,10 +321,8 @@ def _section_segmentation(seg_overview, atlas_sheet, line_debug, S) -> list:
         e.append(Image(seg_overview, width=INNER_W, height=7*cm, kind="proportional"))
     else:
         e.append(Paragraph("[Segmentation overview not available]", S["body"]))
-
     e.append(Spacer(1, 0.5*cm))
 
-    # 3b — Atlas sheet
     e.append(_sub_header("3b — Character Atlas Sheet  (Individual Crops)", C_PURPLE, S))
     e.append(Paragraph(
         "Every extracted character crop is shown in the grid below.  "
@@ -316,27 +338,22 @@ def _section_segmentation(seg_overview, atlas_sheet, line_debug, S) -> list:
         e.append(Image(atlas_sheet, width=INNER_W, height=9*cm, kind="proportional"))
     else:
         e.append(Paragraph("[Atlas sheet not available]", S["body"]))
-
     e.append(Spacer(1, 0.4*cm))
 
-    # 3c — Line detection debug image
     e.append(_sub_header("3c — Line Detection  (Horizontal Projection Profile)", C_PURPLE, S))
     e.append(Paragraph(
         "The graph shows the horizontal projection profile used to detect text-line "
         "boundaries on the blank page.  Green bars = ink rows above threshold.  "
         "Yellow lines = detected line breaks used to group contours into lines "
-        "before left-to-right sorting is applied within each line.  "
-        "This replaces the old arbitrary y//20 row-bucket hack.",
+        "before left-to-right sorting is applied within each line.",
         S["body"]))
     e.append(Spacer(1, 0.3*cm))
     if line_debug and os.path.exists(line_debug):
         e.append(Image(line_debug, width=5*cm, height=9*cm, kind="proportional"))
     else:
         e.append(Paragraph("[Line debug image not available]", S["body"]))
-
     e.append(Spacer(1, 0.5*cm))
 
-    # 3d — Label assignment explanation table
     e.append(_sub_header("3d — Charset Label Assignment Map", C_PURPLE, S))
     e.append(Paragraph(
         "The table below shows exactly which label is assigned to each crop index. "
@@ -351,7 +368,6 @@ def _section_segmentation(seg_overview, atlas_sheet, line_debug, S) -> list:
 
 
 def _charset_table(S) -> Table:
-    """Build a compact index→label reference table (10 columns)."""
     from utils.segmentation import CHARSET
     cols_per_row = 13
     header = ["#", "Label"] * cols_per_row
@@ -364,7 +380,6 @@ def _charset_table(S) -> Table:
             rows.append(chunk)
             chunk = []
     if chunk:
-        # Pad to full width
         while len(chunk) < cols_per_row * 2:
             chunk.append("")
         rows.append(chunk)
@@ -386,7 +401,6 @@ def _charset_table(S) -> Table:
     return t
 
 
-# ── § 4 ───────────────────────────────────────────────────────────────────────
 def _section_signature(orig_sig, test_sig, analysis, S) -> list:
     e = []
     e.append(PageBreak())
@@ -394,7 +408,6 @@ def _section_signature(orig_sig, test_sig, analysis, S) -> list:
 
     half = INNER_W / 2 - 0.3*cm
 
-    # 4a — Images
     e.append(_sub_header("4a — Signature Images", C_TEAL, S))
     row = []
     for path, label in [(orig_sig, "Original Signature  (Reference)"),
@@ -419,7 +432,6 @@ def _section_signature(orig_sig, test_sig, analysis, S) -> list:
     e.append(Spacer(1, 0.4*cm))
 
     if analysis:
-        # 4b — Score breakdown
         e.append(_sub_header("4b — Similarity Metric Breakdown", C_TEAL, S))
         score_data = [
             ["Metric", "Score (%)", "Weight", "What it measures"],
@@ -436,7 +448,8 @@ def _section_signature(orig_sig, test_sig, analysis, S) -> list:
              str(analysis.get("pixel_score","N/A")), "15%",
              "Direct pixel-by-pixel difference after alignment"],
         ]
-        st = TableStyle([
+        st_tbl = Table(score_data, colWidths=[6*cm, 2.3*cm, 1.7*cm, 6*cm])
+        st_tbl.setStyle(TableStyle([
             ("BACKGROUND",    (0,0), (-1,0), C_ACCENT),
             ("TEXTCOLOR",     (0,0), (-1,0), colors.white),
             ("FONTNAME",      (0,0), (-1,0), "Helvetica-Bold"),
@@ -447,14 +460,10 @@ def _section_signature(orig_sig, test_sig, analysis, S) -> list:
             ("INNERGRID",     (0,0), (-1,-1), 0.25, colors.lightgrey),
             ("TOPPADDING",    (0,0), (-1,-1), 5),
             ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-        ])
-        st_tbl = Table(score_data,
-                       colWidths=[6*cm, 2.3*cm, 1.7*cm, 6*cm])
-        st_tbl.setStyle(st)
+        ]))
         e.append(st_tbl)
         e.append(Spacer(1, 0.4*cm))
 
-        # 4c — Risk badge
         e.append(_sub_header("4c — Risk Classification", C_TEAL, S))
         score    = analysis.get("similarity_score", 0)
         risk     = analysis.get("risk_level",  "Unknown")
@@ -477,7 +486,6 @@ def _section_signature(orig_sig, test_sig, analysis, S) -> list:
         e.append(bt)
         e.append(Spacer(1, 0.4*cm))
 
-        # 4d — Feature comparison
         fo = analysis.get("features_original", {})
         ft = analysis.get("features_test",     {})
         if fo or ft:
@@ -497,7 +505,7 @@ def _section_signature(orig_sig, test_sig, analysis, S) -> list:
                 ov = fo.get(key, "—")
                 tv = ft.get(key, "—")
                 try:
-                    d = round(float(tv) - float(ov), 3)
+                    d  = round(float(tv) - float(ov), 3)
                     ds = f"{d:+.3f}"
                     interp = ("Similar" if abs(d) < 0.05 * max(abs(float(ov)), 1)
                               else "Differs")
@@ -505,8 +513,7 @@ def _section_signature(orig_sig, test_sig, analysis, S) -> list:
                     ds, interp = "—", "—"
                 rows.append([lbl, str(ov), str(tv), ds, interp])
 
-            ft_tbl = Table(rows,
-                           colWidths=[5.5*cm, 2.2*cm, 2.2*cm, 2.2*cm, 3.9*cm])
+            ft_tbl = Table(rows, colWidths=[5.5*cm, 2.2*cm, 2.2*cm, 2.2*cm, 3.9*cm])
             ft_tbl.setStyle(TableStyle([
                 ("BACKGROUND",    (0,0), (-1,0), C_PRIMARY),
                 ("TEXTCOLOR",     (0,0), (-1,0), colors.white),
@@ -525,7 +532,6 @@ def _section_signature(orig_sig, test_sig, analysis, S) -> list:
     return e
 
 
-# ── § 5 ───────────────────────────────────────────────────────────────────────
 def _section_conclusion(analysis, S) -> list:
     e = []
     e.append(PageBreak())
@@ -534,23 +540,26 @@ def _section_conclusion(analysis, S) -> list:
     e.append(Paragraph(verdict, S["body"]))
     e.append(Spacer(1, 0.6*cm))
     e.append(Paragraph(
-        "<i>This report is generated automatically by ForgeNet-X and is intended "
-        "for academic and research purposes only.  All results must be reviewed "
-        "by a qualified forensic document examiner before any legal, financial, "
-        "or investigative action is taken.</i>",
+        "<i>This report is generated automatically by ForgeNet-X, a forensic "
+        "handwriting and signature authenticity system developed as an academic "
+        "AI/ML project.  The synthetic handwriting generator is a research tool "
+        "used exclusively to stress-test the detector and augment training data; "
+        "all generated outputs carry a visible watermark.  All forensic results "
+        "must be reviewed by a qualified document examiner before any legal, "
+        "financial, or investigative action is taken.  See ETHICS.md for the "
+        "full responsible-use statement.</i>",
         S["disclaimer"]))
     return e
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Shared layout helpers
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Layout helpers ─────────────────────────────────────────────────────────────
 
 def _section_title(num, text, color, S) -> list:
     return [
         Paragraph(f"{num}.  {text}", S["section_h"]),
         HRFlowable(width="100%", thickness=1, color=color, spaceAfter=8),
     ]
+
 
 def _sub_header(text, color, S) -> Paragraph:
     return Paragraph(
@@ -560,7 +569,6 @@ def _sub_header(text, color, S) -> Paragraph:
 
 def _header_footer(canvas, doc):
     canvas.saveState()
-    # Top bar
     canvas.setFillColor(C_PRIMARY)
     canvas.rect(MARGIN, PAGE_H - 1.4*cm,
                 PAGE_W - 2*MARGIN, 0.55*cm, fill=1, stroke=0)
@@ -568,7 +576,6 @@ def _header_footer(canvas, doc):
     canvas.setFont("Helvetica-Bold", 7.5)
     canvas.drawString(MARGIN + 4, PAGE_H - 0.99*cm,
                       "ForgeNet-X  |  Visual Confirmation Report  |  Confidential")
-    # Bottom bar
     canvas.setFillColor(C_PRIMARY)
     canvas.rect(MARGIN, 0.55*cm,
                 PAGE_W - 2*MARGIN, 0.38*cm, fill=1, stroke=0)
@@ -580,9 +587,7 @@ def _header_footer(canvas, doc):
     canvas.restoreState()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Paragraph styles
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Paragraph styles ───────────────────────────────────────────────────────────
 
 def _styles() -> dict:
     B = getSampleStyleSheet()

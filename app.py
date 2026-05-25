@@ -1,16 +1,9 @@
-"""
-ForgeNet-X — Flask Application  (Windows-compatible)
-
-Visual confirmation is now baked into every processing step:
-  • upload_handwriting  →  saves 5 preprocessing stage PNGs
-                           saves segmentation overview PNG
-                           saves character atlas sheet PNG
-  • generate_text       →  saves generated output PNG
-  • download_report     →  bundles all the above into the PDF
-"""
+"""ForgeNet-X — Flask Application"""
 
 import os
 import uuid
+import json
+from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, render_template, request, jsonify, send_file, url_for
@@ -24,6 +17,8 @@ from utils.segmentation       import (segment_characters,
 from utils.handwriting        import generate_handwriting
 from utils.signature_analysis import analyze_signatures
 from utils.pdf_generator      import generate_report
+from utils.provenance         import analyze_provenance
+
 
 # ── App config ────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -34,7 +29,8 @@ UPLOAD_HW      = BASE_DIR / "uploads"  / "handwriting"
 UPLOAD_SIG     = BASE_DIR / "uploads"  / "signatures"
 OUTPUT_GEN     = BASE_DIR / "outputs"  / "generated"
 OUTPUT_REPORTS = BASE_DIR / "outputs"  / "reports"
-OUTPUT_VISUALS = BASE_DIR / "outputs"  / "visuals"   # NEW: all annotation PNGs
+OUTPUT_VISUALS = BASE_DIR / "outputs"  / "visuals"
+GEN_LOG_PATH   = BASE_DIR / "outputs"  / "generation_log.jsonl"
 
 for _d in [UPLOAD_HW, UPLOAD_SIG, OUTPUT_GEN, OUTPUT_REPORTS, OUTPUT_VISUALS]:
     _d.mkdir(parents=True, exist_ok=True)
@@ -42,10 +38,8 @@ for _d in [UPLOAD_HW, UPLOAD_SIG, OUTPUT_GEN, OUTPUT_REPORTS, OUTPUT_VISUALS]:
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "bmp", "tiff"}
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
-# ── In-memory session store ───────────────────────────────────────────────────
-# Maps upload filename → visual paths dict so /download_report can retrieve them.
-# Fine for a single-user offline tool; replace with Redis/DB for multi-user.
-_visual_store: dict = {}   # { hw_filename: { "pipeline": {...}, "seg_overview": "...", ... } }
+_visual_store: dict = {}  # hw_filename → { pipeline, seg_overview, atlas_sheet, ... }
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def allowed_file(fn: str) -> bool:
@@ -53,6 +47,17 @@ def allowed_file(fn: str) -> bool:
 
 def uid_name(fn: str) -> str:
     return f"{uuid.uuid4().hex}.{fn.rsplit('.',1)[1].lower()}"
+
+def _log_generation(hw_filename: str, text_length: int) -> None:
+    record = {
+        "timestamp"       : datetime.now().isoformat(timespec="seconds"),
+        "hw_filename"     : hw_filename,
+        "text_length"     : text_length,
+        "purpose_declared": True,
+    }
+    with open(GEN_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -63,12 +68,6 @@ def index():
 
 @app.route("/upload_handwriting", methods=["POST"])
 def upload_handwriting():
-    """
-    1. Save upload
-    2. Preprocess  →  save 5 stage visuals
-    3. Segment     →  save overview PNG  +  atlas sheet PNG
-    4. Return counts + filenames for the frontend
-    """
     if "file" not in request.files:
         return jsonify({"error": "No file in request"}), 400
 
@@ -80,55 +79,44 @@ def upload_handwriting():
     fpath = UPLOAD_HW / fname
     f.save(str(fpath))
 
-    # ── Preprocess ────────────────────────────────────────────────────────────
-    processed = preprocess_image(str(fpath))
+    processed   = preprocess_image(str(fpath))
+    pp_paths    = save_pipeline_visuals(processed, output_dir=str(OUTPUT_VISUALS), base_name=fname)
+    char_paths  = segment_characters(processed, output_dir=str(OUTPUT_GEN), base_name=fname)
 
-    # ── Save pipeline visuals (5 annotated stage images) ─────────────────────
-    pp_paths = save_pipeline_visuals(processed,
-                                     output_dir=str(OUTPUT_VISUALS),
-                                     base_name=fname)
-
-    # ── Segment characters ────────────────────────────────────────────────────
-    char_paths = segment_characters(processed,
-                                    output_dir=str(OUTPUT_GEN),
-                                    base_name=fname)
-
-    # ── Segmentation overview (bounding-box annotation image) ─────────────────
-    # Derive char_dir here so all visual functions share the same path
     stem     = os.path.splitext(fname)[0]
     char_dir = str(OUTPUT_GEN / f"chars_{stem}")
 
-    seg_overview = save_segmentation_overview(processed,
-                                              char_paths,
+    seg_overview = save_segmentation_overview(processed, char_paths,
                                               output_dir=str(OUTPUT_VISUALS),
-                                              base_name=fname,
-                                              char_dir=char_dir)
-
-    # ── Character atlas sheet (tiled crop grid) ───────────────────────────────
+                                              base_name=fname, char_dir=char_dir)
     atlas_sheet  = save_character_atlas_sheet(char_paths,
                                               output_dir=str(OUTPUT_VISUALS),
-                                              base_name=fname,
-                                              char_dir=char_dir)
+                                              base_name=fname, char_dir=char_dir)
+    line_debug   = save_line_debug_image(processed, output_dir=str(OUTPUT_VISUALS), base_name=fname)
+    provenance   = analyze_provenance(str(fpath))
 
-    # ── Line detection debug image ────────────────────────────────────────────
-    line_debug   = save_line_debug_image(processed,
-                                         output_dir=str(OUTPUT_VISUALS),
-                                         base_name=fname)
-
-    # Store all visual paths + char_dir keyed by upload filename
     _visual_store[fname] = {
         "pipeline"    : pp_paths,
         "seg_overview": seg_overview,
         "atlas_sheet" : atlas_sheet,
         "line_debug"  : line_debug,
         "char_dir"    : char_dir,
+        "provenance"  : provenance,
     }
+
+    seg_quality   = {}
+    manifest_path = os.path.join(char_dir, "manifest.json")
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as _mf:
+            seg_quality = json.load(_mf).get("_meta", {})
 
     return jsonify({
         "message"    : "Handwriting uploaded & processed",
         "filename"   : fname,
         "char_count" : len(char_paths),
         "stage_count": len(pp_paths),
+        "provenance" : provenance,
+        "seg_quality": seg_quality,
     })
 
 
@@ -145,20 +133,17 @@ def generate_text():
     if not hw_path.exists():
         return jsonify({"error": "Handwriting source not found"}), 404
 
-    out_name = f"gen_{hw_filename}"
-    out_path = OUTPUT_GEN / out_name
-
+    out_name  = f"gen_{hw_filename}"
+    out_path  = OUTPUT_GEN / out_name
     processed = preprocess_image(str(hw_path))
-    # Retrieve the char_dir with the correct manifest from the upload step
     char_dir  = _visual_store.get(hw_filename, {}).get("char_dir", None)
-    generate_handwriting(processed, input_text, str(out_path),
-                         char_dir=char_dir)
+    generate_handwriting(processed, input_text, str(out_path), char_dir=char_dir)
+    _log_generation(hw_filename, len(input_text))
 
     return jsonify({
-        "message"      : "Handwriting generated",
-        "output_file"  : out_name,
-        "download_url" : url_for("download_file",
-                                 folder="generated", filename=out_name),
+        "message"     : "Synthetic sample generated and watermarked",
+        "output_file" : out_name,
+        "download_url": url_for("download_file", folder="generated", filename=out_name),
     })
 
 
@@ -184,21 +169,14 @@ def analyze_signature():
     test = data.get("test")
     if not orig or not test:
         return jsonify({"error": "Both filenames required"}), 400
-
     for name, label in [(orig, "original"), (test, "test")]:
         if not (UPLOAD_SIG / name).exists():
             return jsonify({"error": f"File not found: {label}"}), 404
-
-    return jsonify(analyze_signatures(str(UPLOAD_SIG / orig),
-                                      str(UPLOAD_SIG / test)))
+    return jsonify(analyze_signatures(str(UPLOAD_SIG / orig), str(UPLOAD_SIG / test)))
 
 
 @app.route("/download_report", methods=["POST"])
 def download_report():
-    """
-    Passes all visual confirmation paths to generate_report so the PDF
-    contains the full pipeline, segmentation overview, and atlas sheet.
-    """
     data     = request.get_json(force=True)
     hw_file  = data.get("hw_filename",  "")
     gen_file = data.get("gen_filename", "")
@@ -210,30 +188,27 @@ def download_report():
     report_path = OUTPUT_REPORTS / report_name
 
     def _p(folder, name):
-        if not name:
-            return None
+        if not name: return None
         p = folder / name
         return str(p) if p.exists() else None
 
-    # Retrieve stored visual paths for this handwriting upload
     visuals = _visual_store.get(hw_file, {})
 
     generate_report(
-        hw_path      = _p(UPLOAD_HW,  hw_file),
-        gen_path     = _p(OUTPUT_GEN, gen_file),
-        orig_sig     = _p(UPLOAD_SIG, orig_sig),
-        test_sig     = _p(UPLOAD_SIG, test_sig),
-        analysis     = analysis,
-        output_path  = str(report_path),
-        # ── NEW visual confirmation args ──────────────────────────────────────
+        hw_path        = _p(UPLOAD_HW,  hw_file),
+        gen_path       = _p(OUTPUT_GEN, gen_file),
+        orig_sig       = _p(UPLOAD_SIG, orig_sig),
+        test_sig       = _p(UPLOAD_SIG, test_sig),
+        analysis       = analysis,
+        output_path    = str(report_path),
         pipeline_paths = visuals.get("pipeline",     {}),
         seg_overview   = visuals.get("seg_overview", None),
         atlas_sheet    = visuals.get("atlas_sheet",  None),
         line_debug     = visuals.get("line_debug",   None),
+        provenance     = visuals.get("provenance",   None),
     )
 
-    return send_file(str(report_path),
-                     as_attachment=True,
+    return send_file(str(report_path), as_attachment=True,
                      download_name="ForgeNet-X_Report.pdf")
 
 
@@ -245,11 +220,9 @@ def download_file(folder, filename):
         "visuals"  : OUTPUT_VISUALS,
     }
     d = folder_map.get(folder)
-    if not d:
-        return jsonify({"error": "Invalid folder"}), 400
+    if not d: return jsonify({"error": "Invalid folder"}), 400
     p = d / filename
-    if not p.exists():
-        return jsonify({"error": "File not found"}), 404
+    if not p.exists(): return jsonify({"error": "File not found"}), 404
     return send_file(str(p), as_attachment=True)
 
 
