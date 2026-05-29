@@ -13,8 +13,10 @@ from utils.preprocessing      import preprocess_image, save_pipeline_visuals
 from utils.segmentation       import (segment_characters,
                                       save_segmentation_overview,
                                       save_character_atlas_sheet,
-                                      save_line_debug_image)
+                                      save_line_debug_image,
+                                      save_seam_overlay_image)
 from utils.handwriting        import generate_handwriting
+from utils.normalization      import build_normalized_atlas, save_normalization_preview
 from utils.signature_analysis import analyze_signatures
 from utils.pdf_generator      import generate_report
 from utils.provenance         import analyze_provenance
@@ -92,7 +94,9 @@ def upload_handwriting():
     atlas_sheet  = save_character_atlas_sheet(char_paths,
                                               output_dir=str(OUTPUT_VISUALS),
                                               base_name=fname, char_dir=char_dir)
-    line_debug   = save_line_debug_image(processed, output_dir=str(OUTPUT_VISUALS), base_name=fname)
+    line_debug   = save_seam_overlay_image(processed, char_paths,
+                                          output_dir=str(OUTPUT_VISUALS),
+                                          base_name=fname, char_dir=char_dir)
     provenance   = analyze_provenance(str(fpath))
 
     _visual_store[fname] = {
@@ -103,6 +107,22 @@ def upload_handwriting():
         "char_dir"    : char_dir,
         "provenance"  : provenance,
     }
+
+    # ── Normalisation preview (debug grid on shared baseline) ─────────────────
+    norm_preview = None
+    try:
+        atlas_n, targets_n, hw_n = build_normalized_atlas(
+            char_dir, blend=0.35, target_x_height_px=None
+        )
+        if atlas_n:
+            norm_preview_name = f"norm_{stem}.png"
+            norm_preview_path = str(OUTPUT_VISUALS / norm_preview_name)
+            save_normalization_preview(atlas_n, targets_n, hw_n, norm_preview_path)
+            norm_preview = norm_preview_name
+    except Exception:
+        pass   # non-fatal; don't break the upload if normalisation preview fails
+
+    _visual_store[fname]["norm_preview"] = norm_preview
 
     seg_quality   = {}
     manifest_path = os.path.join(char_dir, "manifest.json")
